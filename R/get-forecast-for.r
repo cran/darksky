@@ -18,6 +18,7 @@
 #' \href{https://darksky.net/dev/docs}{Dark Sky API documentation} for more
 #' information.
 #'
+#' @md
 #' @param latitude forecast latitude (character, decimal format)
 #' @param longitude forecast longitude (character, decimal format)
 #' @param timestamp should either be a UNIX time (that is, seconds since midnight GMT on 1
@@ -26,7 +27,8 @@
 #'   \code{[+|-][HH][MM]} for an offset in hours or minutes). For the latter format, if no
 #'   timezone is present, local time (at the provided latitude and longitude) is assumed.
 #'   (This string format is a subset of ISO 8601 time. An as example,
-#'   \code{2013-05-06T12:00:00-0400}.)
+#'   \code{2013-05-06T12:00:00-0400}.) If an R `Date` or `POSIXct` object is passed in
+#'   it will be converted into the proper format.
 #' @param units return the API response in units other than the default Imperial unit
 #' @param language return text summaries in the desired language
 #' @param exclude exclude some number of data blocks from the API response. This is useful
@@ -53,6 +55,10 @@ get_forecast_for <- function(latitude, longitude, timestamp,
                              add_json=FALSE, add_headers=FALSE,
                              ...) {
 
+  if (inherits(timestamp, "Date") || inherits(timestamp, "POSIXct")) {
+    timestamp <- ts_to_iso8601(timestamp)
+  }
+
   url <- sprintf("https://api.darksky.net/forecast/%s/%s,%s,%s",
                  darksky_api_key(), latitude, longitude, timestamp)
 
@@ -70,23 +76,31 @@ get_forecast_for <- function(latitude, longitude, timestamp,
   # hourly, minutely and daily blocks might not be in the response
   # so only process the ones that are actually in the response
 
-  lapply(lys[which(lys %in% names(tmp))], function(x) {
+  lapply(
 
-    dat <- dplyr::bind_rows(lapply(tmp[[x]]$data, as_data_frame))
+    lys[which(lys %in% names(tmp))], function(x) {
 
-    # various time fields might not be in the block data, so only
-    # process which ones are in the block data
+      dat <- plyr::rbind.fill(lapply(tmp[[x]]$data, as.data.frame, stringsAsFactors=FALSE))
 
-    ftimes <- c("time", "sunriseTime", "sunsetTime", "temperatureMinTime",
-                "temperatureMaxTime", "apparentTemperatureMinTime",
-                "apparentTemperatureMaxTime", "precipIntensityMaxTime")
+      # various time fields might not be in the block data, so only
+      # process which ones are in the block data
 
-    # convert times to POSIXct since they make sense in tbl_dfs/data.frames
+      ftimes <- c("time", "sunriseTime", "sunsetTime", "temperatureMinTime",
+                  "temperatureMaxTime", "apparentTemperatureMinTime",
+                  "apparentTemperatureMaxTime", "precipIntensityMaxTime")
 
-    ly <- dplyr::mutate_each_(dat, funs(convert_time),
-                              vars=ftimes[which(ftimes %in% colnames(dat))])
+      # convert times to POSIXct since they make sense in tbl_dfs/data.frames
 
-  }) -> fio_data
+      cols <- ftimes[which(ftimes %in% colnames(dat))]
+      for (col in cols) {
+        dat[,col] <- convert_time(dat[,col])
+      }
+
+      dat
+
+    }
+
+  ) -> fio_data
 
   fio_data <- setNames(fio_data, lys[which(lys %in% names(tmp))])
 
@@ -94,9 +108,9 @@ get_forecast_for <- function(latitude, longitude, timestamp,
   # rbinding later for folks
 
   if ("currently" %in% names(tmp)) {
-    currently <- dplyr::as_data_frame(tmp$currently)
+    currently <- as.data.frame(tmp$currently, stringsAsFactors=FALSE)
     if ("time" %in% colnames(currently)) {
-      currently <- dplyr::mutate(currently, time=convert_time(time))
+      currently$time <- convert_time(currently$time)
     }
     fio_data$currently <- currently
   }
@@ -113,6 +127,7 @@ get_forecast_for <- function(latitude, longitude, timestamp,
   }
 
   class(ret_val) <- c("darksky", class(ret_val))
+
   return(ret_val)
 
 }

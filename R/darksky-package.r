@@ -6,11 +6,12 @@
 #' @name darksky
 #' @docType package
 #' @author Bob Rudis (bob@@rud.is)
-#' @import dplyr
+#' @importFrom plyr rbind.fill
 #' @importFrom httr GET content stop_for_status headers
 #' @importFrom grid unit
 #' @importFrom gridExtra grid.arrange
 #' @import ggplot2
 #' @importFrom stats setNames time
+#' @importFrom utils str
 #' @import gtable
 NULL
